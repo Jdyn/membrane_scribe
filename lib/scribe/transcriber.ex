@@ -18,9 +18,9 @@ defmodule Membrane.RTC.Engine.Endpoint.Scribe.Transcriber do
     serving =
       Bumblebee.Audio.speech_to_text_whisper(whisper, featurizer, tokenizer, generation_config,
         defn_options: [compiler: EXLA]
+        # chunk_num_seconds: 5
+        # compile: [batch_size: 1]
       )
-
-    dbg(serving)
 
     {:ok, pid} =
       Nx.Serving.start_link(
@@ -40,7 +40,6 @@ defmodule Membrane.RTC.Engine.Endpoint.Scribe.Transcriber do
 
   @impl true
   def handle_call({:transcribe, audio}, from, state) do
-    audio = Nx.from_binary(audio, :f32)
     state = %{state | queue: state.queue ++ [{from, audio}]}
     send(self(), :process)
 
@@ -51,11 +50,12 @@ defmodule Membrane.RTC.Engine.Endpoint.Scribe.Transcriber do
   def handle_info(:process, state) do
     state.queue
     |> Enum.map(fn {from, input} ->
-      Task.start(fn ->
-        output = Nx.Serving.batched_run(Membrane.RTC.Engine.Endpoint.Scribe.Transcriber.Serving, input)
-        IO.inspect(output)
-        GenServer.reply(from, output)
-      end)
+      audio = Nx.from_binary(input, :f32)
+
+      output = Nx.Serving.run(state.serving, audio)
+      transcription = Enum.map_join(output.chunks, & &1.text)
+      IO.inspect(transcription)
+      GenServer.reply(from, output)
     end)
 
     {:noreply, %{state | queue: []}}

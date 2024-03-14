@@ -48,15 +48,28 @@ defmodule Membrane.RTC.Engine.Endpoint.Scribe do
       })
       |> child({:depayloader, track.id}, Track.get_depayloader(track))
       |> child({:opus_decoder, track.id}, Membrane.Opus.Decoder)
-
       # Bumblebee Audio requires 16kHz f32le format
-      |> child(:converter, %Membrane.FFmpeg.SWResample.Converter{
-        output_stream_format: %RawAudio{
-          channels: 1,
-          sample_format: :f32le,
-          sample_rate: 16_000
+      |> child(
+        {:converter, track.id},
+        %Membrane.FFmpeg.SWResample.Converter{
+          output_stream_format: %RawAudio{
+            channels: 1,
+            sample_format: :f32le,
+            sample_rate: 16_000
+          }
         }
-      })
+      )
+      |> child(
+        {:parser, track.id},
+        %Membrane.RawAudioParser{
+          stream_format: %RawAudio{
+            channels: 1,
+            sample_format: :f32le,
+            sample_rate: 16_000
+          },
+          overwrite_pts?: true
+        }
+      )
       |> via_in(Pad.ref(:input, track.id))
       |> get_child(:scribe_filter)
     ]
